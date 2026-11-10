@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 // MARK: - Состояние сессии (один файл)
 
@@ -27,9 +28,14 @@ enum SessionStore {
         }
     }
 
-    /// Приложение-владелец сессии живо?
+    /// Приложение-владелец сессии живо и это именно NeSpat (не чужой PID после переиспользования).
     static func ownerAlive(_ s: Session) -> Bool {
         guard s.owned, s.pid > 0 else { return false }
-        return kill(s.pid, 0) == 0
+        guard kill(s.pid, 0) == 0 else { return false }
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        let len = proc_pidpath(s.pid, &buffer, UInt32(buffer.count))
+        guard len > 0 else { return false }
+        let path = String(decoding: buffer.prefix(Int(len)).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        return path.contains("NeSpat")
     }
 }

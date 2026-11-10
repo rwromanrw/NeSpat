@@ -4,11 +4,23 @@
 # а приложение не запущено (или зависло), либо истёк таймер/критичны батарея/нагрев.
 set -euo pipefail
 
-APP_PATH="${1:-$HOME/Applications/NeSpat.app}"
-PLIST="$HOME/Library/LaunchAgents/local.nespat.watchdog.plist"
+# Предпочитаем /Applications (куда ставит build.sh --install), иначе ~/Applications.
+if [[ -n "${1:-}" ]]; then
+    APP_PATH="$1"
+elif [[ -x "/Applications/NeSpat.app/Contents/MacOS/NeSpat" ]]; then
+    APP_PATH="/Applications/NeSpat.app"
+elif [[ -x "$HOME/Applications/NeSpat.app/Contents/MacOS/NeSpat" ]]; then
+    APP_PATH="$HOME/Applications/NeSpat.app"
+else
+    echo "Нет приложения NeSpat.app (сначала ./scripts/build.sh --install)" >&2
+    exit 1
+fi
 
-if [[ ! -x "$APP_PATH/Contents/MacOS/NeSpat" ]]; then
-    echo "Нет приложения: $APP_PATH (сначала ./scripts/build.sh --install)" >&2
+PLIST="$HOME/Library/LaunchAgents/local.nespat.watchdog.plist"
+BIN="$APP_PATH/Contents/MacOS/NeSpat"
+
+if [[ ! -x "$BIN" ]]; then
+    echo "Нет исполняемого файла: $BIN" >&2
     exit 1
 fi
 
@@ -24,7 +36,7 @@ cat > "$PLIST" <<EOF
     <string>local.nespat.watchdog</string>
     <key>ProgramArguments</key>
     <array>
-        <string>$APP_PATH/Contents/MacOS/NeSpat</string>
+        <string>$BIN</string>
         <string>--watchdog</string>
     </array>
     <key>RunAtLoad</key>
@@ -40,4 +52,6 @@ cat > "$PLIST" <<EOF
 EOF
 
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
-echo "Сторож установлен: $PLIST (каждые 30 с)"
+echo "Сторож установлен: $PLIST"
+echo "Бинарник: $BIN (каждые 30 с)"
+echo "Если приложение упало при включённом режиме — macOS может один раз спросить пароль, чтобы вернуть сон."

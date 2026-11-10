@@ -18,63 +18,86 @@ struct NeSpatApp: App {
         MenuBarExtra {
             PanelView(model: model)
         } label: {
-            // Фиксированная ширина + моноширинные цифры: пункт не «пляшет».
+            // SF Pro; моноширинные цифры, чтобы ширина пункта меньше «плясала».
             Text(model.menuTitle)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .frame(minWidth: 108, alignment: .leading)
+                .font(.system(size: 13, weight: .regular))
+                .monospacedDigit()
+                .frame(minWidth: 100, alignment: .leading)
         }
-        // menuBarExtraAccess обязан идти сразу после MenuBarExtra, до других scene-модификаторов.
+        // menuBarExtraAccess обязан идти сразу после MenuBarExtra.
         .menuBarExtraAccess(isPresented: $isMenuPresented) { item in
-            // Запоминает позицию между перезапусками (после ⌘+перетаскивания).
-            item.autosaveName = NSStatusItem.AutosaveName("local.nespat.statusItem")
+            // v2: сброс залипшей позиции под вырезом. Preferred Position — только если ещё нет
+            // (иначе каждый запуск затирает ⌘-перетаскивание пользователя).
+            let name = "local.nespat.statusItem.v2"
+            let defaults = UserDefaults.standard
+            let visibleKey = "NSStatusItem Visible \(name)"
+            let visibleCCKey = "NSStatusItem VisibleCC \(name)"
+            let positionKey = "NSStatusItem Preferred Position \(name)"
+            defaults.set(true, forKey: visibleKey)
+            defaults.set(true, forKey: visibleCCKey)
+            if defaults.object(forKey: positionKey) == nil {
+                defaults.set(220, forKey: positionKey)
+            }
+            item.autosaveName = NSStatusItem.AutosaveName(name)
+            item.isVisible = true
             statusItem = item
         }
         .menuBarExtraStyle(.window)
     }
 }
 
-// MARK: - Панель по клику
+// MARK: - Панель (стиль системных меню macOS)
 
 struct PanelView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             header
-            Divider()
-            durationPicker
+            thinDivider
+            durationBlock
+            thinDivider
             metrics
-            Divider()
+            thinDivider
             settings
-            Divider()
+            thinDivider
             footer
         }
-        .padding(16)
-        .frame(width: 320)
+        .padding(.vertical, 8)
+        .frame(width: 300)
+    }
+
+    private var thinDivider: some View {
+        Divider().padding(.horizontal, 14).padding(.vertical, 6)
     }
 
     // MARK: Шапка
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center) {
                 Text("Не спать")
-                    .font(.title2.bold())
-                Spacer()
+                    .font(.headline)
+                Spacer(minLength: 8)
                 Toggle("", isOn: isOnBinding)
                     .labelsHidden()
                     .toggleStyle(.switch)
-                    .controlSize(.large)
+                    .controlSize(.small)
                     .disabled(model.busy)
             }
             Text(statusText)
-                .font(.callout)
-                .foregroundStyle(statusColor)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             if model.status == .foreign {
                 Button("Вернуть обычный сон") { model.forceRestoreSleep() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .padding(.top, 2)
             }
         }
+        .padding(.horizontal, 14)
+        .padding(.top, 4)
     }
 
     private var isOnBinding: Binding<Bool> {
@@ -88,32 +111,25 @@ struct PanelView: View {
         switch model.status {
         case .on:
             if let remaining = model.remaining {
-                return "Включено. Осталось: \(Fmt.duration(remaining))"
+                return "Включено · осталось \(Fmt.duration(remaining))"
             }
-            return "Включено — подтверждено системой"
+            return "Включено · подтверждено системой"
         case .off:
-            return "Выключено — обычный сон"
+            return "Выключено · обычный сон"
         case .foreign:
             return "Сон выключен не этим приложением"
         case .unknown:
-            return "⚠ Не удалось подтвердить состояние сна"
-        }
-    }
-
-    private var statusColor: Color {
-        switch model.status {
-        case .on: .green
-        case .off: .secondary
-        case .foreign: .orange
-        case .unknown: .red
+            return "Не удалось подтвердить состояние сна"
         }
     }
 
     // MARK: Длительность
 
-    private var durationPicker: some View {
+    private var durationBlock: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Длительность").font(.caption).foregroundStyle(.secondary)
+            Text("Длительность")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Picker("", selection: Binding(
                 get: { model.duration },
                 set: { model.setDuration($0) }
@@ -124,14 +140,16 @@ struct PanelView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .controlSize(.small)
         }
+        .padding(.horizontal, 14)
     }
 
     // MARK: Метрики
 
     private var metrics: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            metricRow("Температура чипа", model.sample.temperatureC.map { "\(Int($0.rounded())) °C" } ?? "—")
+        VStack(alignment: .leading, spacing: 7) {
+            metricRow("Температура", model.sample.temperatureC.map { "\(Int($0.rounded())) °C" } ?? "—")
             metricRow("Процессор", model.sample.cpuPercent.map { Fmt.percent($0) } ?? "—")
             memoryRow
             metricRow(
@@ -143,64 +161,95 @@ struct PanelView: View {
             )
             if let reason = model.lastReason {
                 Text(reason)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
             }
         }
+        .padding(.horizontal, 14)
     }
 
     private func metricRow(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label).foregroundStyle(.secondary)
-            Spacer()
-            Text(value).monospacedDigit()
+        HStack(alignment: .firstTextBaseline) {
+            Text(label)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(.primary)
         }
-        .font(.callout)
     }
 
     private var memoryRow: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("Память").foregroundStyle(.secondary)
-                Spacer()
+            HStack(alignment: .firstTextBaseline) {
+                Text("Память")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
                 Text("\(Fmt.gb(model.sample.memUsedBytes)) из \(Fmt.gb(model.sample.memTotalBytes))")
-                    .monospacedDigit()
+                    .font(.callout.monospacedDigit())
             }
-            .font(.callout)
+            // Тонкая пастельная шкала: градиент на всю ширину, видна только занятая часть
+            // (при низкой загрузке — зелёный край, при высокой — доходит до красного).
             GeometryReader { geo in
+                let filled = max(4, geo.size.width * memoryFraction)
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.secondary.opacity(0.2))
                     Capsule()
-                        .fill(memoryColor)
-                        .frame(width: geo.size.width * memoryFraction)
+                        .fill(Color.primary.opacity(0.08))
+                    Capsule()
+                        .fill(pastelMemoryGradient)
+                        .frame(width: geo.size.width)
+                        .mask(
+                            HStack(spacing: 0) {
+                                Rectangle().frame(width: filled)
+                                Spacer(minLength: 0)
+                            }
+                        )
                 }
             }
-            .frame(height: 6)
+            .frame(height: 4)
         }
     }
 
     private var memoryFraction: CGFloat {
         guard model.sample.memTotalBytes > 0 else { return 0 }
-        return CGFloat(min(1, Double(model.sample.memUsedBytes) / Double(model.sample.memTotalBytes)))
+        return CGFloat(min(1, Double(sample.memUsedBytes) / Double(sample.memTotalBytes)))
     }
 
-    private var memoryColor: Color {
-        if memoryFraction < 0.7 { return .green }
-        if memoryFraction < 0.9 { return .yellow }
-        return .red
+    private var sample: StatsSampler.Sample { model.sample }
+
+    /// Пастельный «светофор» (+25% насыщенности к исходным мягким тонам).
+    private var pastelMemoryGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(red: 0.60, green: 0.85, blue: 0.67), // зелёный
+                Color(red: 0.97, green: 0.88, blue: 0.49), // жёлтый
+                Color(red: 0.96, green: 0.66, blue: 0.64)  // красный
+            ],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
     }
 
     // MARK: Настройки
 
     private var settings: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Toggle("Запускать при входе", isOn: Binding(
                 get: { model.launchAtLogin },
                 set: { model.setLaunchAtLogin($0) }
             ))
+            .font(.callout)
+            .toggleStyle(.checkbox)
+            .controlSize(.small)
+
             Button("Показать в Программах") { model.revealInFinder() }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderless)
+                .font(.callout)
         }
+        .padding(.horizontal, 14)
     }
 
     // MARK: Низ
@@ -209,7 +258,11 @@ struct PanelView: View {
         HStack {
             Spacer()
             Button("Выход") { model.quit() }
+                .buttonStyle(.borderless)
+                .font(.callout)
                 .keyboardShortcut("q")
         }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 2)
     }
 }

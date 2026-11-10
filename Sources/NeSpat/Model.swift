@@ -15,7 +15,7 @@ final class AppModel: ObservableObject, @unchecked Sendable {
     }
 
     enum Duration: String, CaseIterable, Identifiable {
-        case none = "Без ограничения"
+        case none = "Без лимита"
         case h1 = "1 ч"
         case h3 = "3 ч"
         case h8 = "8 ч"

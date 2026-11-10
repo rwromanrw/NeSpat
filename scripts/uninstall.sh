@@ -11,7 +11,11 @@ launchctl bootout "gui/$(id -u)/local.nespat.watchdog" 2>/dev/null || true
 rm -f "$HOME/Library/LaunchAgents/local.nespat.watchdog.plist"
 
 echo "== Приложение =="
+rm -rf "/Applications/NeSpat.app"
 rm -rf "$HOME/Applications/NeSpat.app"
+# Сборочная копия — чтобы Spotlight не дублировал
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+rm -rf "$SCRIPT_DIR/../build/NeSpat.app"
 
 echo "== Правило sudoers =="
 if [[ -f /etc/sudoers.d/ne-spat ]]; then

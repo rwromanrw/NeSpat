@@ -62,14 +62,23 @@ enum Watchdog {
     }
 
     private static func restore(_ reason: String) {
-        let outcome = SleepControl.setSleepDisabled(false, allowPrompt: false)
-        if outcome == .confirmed {
+        // Сначала без диалога (sudo -n / кэш). Если не вышло — один системный запрос пароля:
+        // без sudoers иначе после падения приложения сон так и останется выключенным.
+        var outcome = SleepControl.setSleepDisabled(false, allowPrompt: false)
+        if outcome != .confirmed {
+            outcome = SleepControl.setSleepDisabled(false, allowPrompt: true)
+        }
+
+        let sleepAlreadyOn = PowerInfo.sleepState() == .enabled
+        if outcome == .confirmed || sleepAlreadyOn {
             var s = SessionStore.load()
             s.owned = false
             s.until = nil
             s.lastReason = "Сон возвращён: \(reason)"
             SessionStore.save(s)
             Log.watchdog("sleep restored: \(reason)")
+        } else if outcome == .canceled {
+            Log.watchdog("restore canceled by user (\(reason))")
         } else {
             Log.watchdog("failed to restore sleep (\(reason)): \(outcome)")
         }
