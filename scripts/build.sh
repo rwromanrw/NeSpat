@@ -24,8 +24,15 @@ echo "Готово: $APP"
 echo "Проверка без GUI: $APP/Contents/MacOS/NeSpat --print-stats"
 
 if [[ "${1:-}" == "--install" ]]; then
-    mkdir -p "$HOME/Applications"
-    rm -rf "$HOME/Applications/NeSpat.app"
-    cp -R "$APP" "$HOME/Applications/NeSpat.app"
-    echo "Установлено: ~/Applications/NeSpat.app"
+    # Системные «Программы», если можно писать; иначе ~/Applications
+    if [[ -w /Applications ]]; then
+        DEST="/Applications/NeSpat.app"
+    else
+        mkdir -p "$HOME/Applications"
+        DEST="$HOME/Applications/NeSpat.app"
+    fi
+    rm -rf "$DEST"
+    cp -R "$APP" "$DEST"
+    echo "Установлено: $DEST"
+    echo "Чтобы найти: Finder → Программы → Не спать (или кнопка в панели приложения)"
 fi

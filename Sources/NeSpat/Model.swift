@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -39,6 +40,7 @@ final class AppModel: ObservableObject, @unchecked Sendable {
     @Published var remaining: TimeInterval?
     @Published var lastReason: String?
     @Published var busy = false
+    @Published var launchAtLogin = false
 
     let testTimerAvailable: Bool
 
@@ -51,6 +53,7 @@ final class AppModel: ObservableObject, @unchecked Sendable {
         testTimerAvailable = testTimer
         session = SessionStore.load()
         adoptSessionOnLaunch()
+        launchAtLogin = LoginItem.isEnabled
         tick()
         let timer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
             self?.tick()
@@ -131,22 +134,24 @@ final class AppModel: ObservableObject, @unchecked Sendable {
     }
 
     private func updateMenuTitle() {
-        let temp = sample.temperatureC.map { "\(Int($0.rounded()))°" } ?? "—"
-        let cpu = sample.cpuPercent.map { Fmt.percent($0) } ?? "—"
-        let memTotal = sample.memTotalBytes
+        // Единый лаконичный формат фиксированной ширины:
+        // «☕ 52° 18% 69%» / «   52° 18% 69%» / «⚠ 52° 18% 69%»
+        let temp = sample.temperatureC.map { String(format: "%2d°", Int($0.rounded())) } ?? " —"
+        let cpu = sample.cpuPercent.map { String(format: "%2d%%", Int($0.rounded())) } ?? " —"
         let mem: String
-        if memTotal > 0 {
-            mem = Fmt.percent(Double(sample.memUsedBytes) / Double(memTotal) * 100)
+        if sample.memTotalBytes > 0 {
+            let p = Int((Double(sample.memUsedBytes) / Double(sample.memTotalBytes) * 100).rounded())
+            mem = String(format: "%2d%%", p)
         } else {
-            mem = "—"
+            mem = " —"
         }
         let icon: String
         switch status {
-        case .on: icon = "☕ "
-        case .off, .foreign: icon = ""
-        case .unknown: icon = "⚠ "
+        case .on: icon = "☕"
+        case .unknown: icon = "⚠"
+        case .off, .foreign: icon = "·"
         }
-        let title = "\(icon)\(temp.padding(toLength: 4, withPad: " ", startingAt: 0))\(cpu.padding(toLength: 4, withPad: " ", startingAt: 0))\(mem)"
+        let title = "\(icon) \(temp) \(cpu) \(mem)"
         if title != menuTitle { menuTitle = title }
     }
 
@@ -188,6 +193,29 @@ final class AppModel: ObservableObject, @unchecked Sendable {
         SleepControl.setSleepDisabled(false)
         endSession(reason: nil)
         tick()
+    }
+
+    func setLaunchAtLogin(_ on: Bool) {
+        if LoginItem.setEnabled(on) {
+            launchAtLogin = on
+        } else {
+            launchAtLogin = LoginItem.isEnabled
+        }
+    }
+
+    /// Открыть установленное приложение в Finder (чтобы было куда кликнуть после «Выход»).
+    func revealInFinder() {
+        let candidates = [
+            "/Applications/NeSpat.app",
+            NSHomeDirectory() + "/Applications/NeSpat.app"
+        ]
+        for path in candidates where FileManager.default.fileExists(atPath: path) {
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+            return
+        }
+        // Запущенный бинарник — показать его bundle
+        let url = Bundle.main.bundleURL
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     func quit() {

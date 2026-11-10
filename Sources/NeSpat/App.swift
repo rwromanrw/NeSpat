@@ -1,9 +1,13 @@
+import AppKit
+import MenuBarExtraAccess
 import SwiftUI
 
 // MARK: - Приложение в строке меню
 
 struct NeSpatApp: App {
     @StateObject private var model: AppModel
+    @State private var isMenuPresented = false
+    @State private var statusItem: NSStatusItem?
 
     init() {
         let testTimer = CommandLine.arguments.contains("--test-timer")
@@ -14,11 +18,16 @@ struct NeSpatApp: App {
         MenuBarExtra {
             PanelView(model: model)
         } label: {
-            // Постоянная ширина: пункт не «ездит» влево-вправо при смене цифр
-            // и остаётся на своём месте в строке меню.
+            // Фиксированная ширина + моноширинные цифры: пункт не «пляшет».
             Text(model.menuTitle)
-                .monospacedDigit()
-                .frame(width: 140, alignment: .leading)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .frame(minWidth: 108, alignment: .leading)
+        }
+        // menuBarExtraAccess обязан идти сразу после MenuBarExtra, до других scene-модификаторов.
+        .menuBarExtraAccess(isPresented: $isMenuPresented) { item in
+            // Запоминает позицию между перезапусками (после ⌘+перетаскивания).
+            item.autosaveName = NSStatusItem.AutosaveName("local.nespat.statusItem")
+            statusItem = item
         }
         .menuBarExtraStyle(.window)
     }
@@ -36,13 +45,15 @@ struct PanelView: View {
             durationPicker
             metrics
             Divider()
+            settings
+            Divider()
             footer
         }
         .padding(16)
         .frame(width: 320)
     }
 
-    // MARK: Шапка: переключатель и статус
+    // MARK: Шапка
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -77,7 +88,7 @@ struct PanelView: View {
         switch model.status {
         case .on:
             if let remaining = model.remaining {
-                return "Включено — подтверждено системой. Осталось: \(Fmt.duration(remaining))"
+                return "Включено. Осталось: \(Fmt.duration(remaining))"
             }
             return "Включено — подтверждено системой"
         case .off:
@@ -177,6 +188,19 @@ struct PanelView: View {
         if memoryFraction < 0.7 { return .green }
         if memoryFraction < 0.9 { return .yellow }
         return .red
+    }
+
+    // MARK: Настройки
+
+    private var settings: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Запускать при входе", isOn: Binding(
+                get: { model.launchAtLogin },
+                set: { model.setLaunchAtLogin($0) }
+            ))
+            Button("Показать в Программах") { model.revealInFinder() }
+                .buttonStyle(.bordered)
+        }
     }
 
     // MARK: Низ
