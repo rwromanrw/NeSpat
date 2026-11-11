@@ -203,19 +203,16 @@ final class AppModel: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Открыть установленное приложение в Finder (чтобы было куда кликнуть после «Выход»).
-    func revealInFinder() {
+    /// Открыть системный «Мониторинг системы» (Activity Monitor).
+    func openActivityMonitor() {
         let candidates = [
-            "/Applications/NeSpat.app",
-            NSHomeDirectory() + "/Applications/NeSpat.app"
+            "/System/Applications/Utilities/Activity Monitor.app",
+            "/Applications/Utilities/Activity Monitor.app"
         ]
         for path in candidates where FileManager.default.fileExists(atPath: path) {
-            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
             return
         }
-        // Запущенный бинарник — показать его bundle
-        let url = Bundle.main.bundleURL
-        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     func quit() {
