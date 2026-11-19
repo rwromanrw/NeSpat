@@ -18,11 +18,14 @@ struct NeSpatApp: App {
         MenuBarExtra {
             PanelView(model: model)
         } label: {
-            // Системный кегль строки меню (menu font 14 pt) + табличные цифры, чтобы ширина не плясала.
-            Text(model.menuTitle)
-                .font(.system(size: 14, weight: .regular))
-                .monospacedDigit()
-                .frame(minWidth: 100, alignment: .leading)
+            // MenuBarExtra снимает SwiftUI-цвет с SF Symbol → цветная NSImage (не template).
+            HStack(spacing: 4) {
+                Image(nsImage: MenuBarCup.image(for: model.status))
+                Text(model.menuMetrics)
+                    .font(.system(size: 14, weight: .regular))
+                    .monospacedDigit()
+            }
+            .frame(minWidth: 100, alignment: .leading)
         }
         // menuBarExtraAccess обязан идти сразу после MenuBarExtra.
         .menuBarExtraAccess(isPresented: $isMenuPresented) { item in
@@ -43,6 +46,52 @@ struct NeSpatApp: App {
             statusItem = item
         }
         .menuBarExtraStyle(.window)
+    }
+}
+
+// MARK: - Цветная чашка для строки меню
+
+/// MenuBarExtra рисует обычные SF Symbol как шаблон (без цвета).
+/// Для статусов с цветом — готовая NSImage с isTemplate=false.
+enum MenuBarCup {
+    static func image(for status: AppModel.Status) -> NSImage {
+        let symbol = NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: "Не спать")
+            ?? NSImage(size: NSSize(width: 14, height: 14))
+        let sized = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+
+        switch status {
+        case .off:
+            let img = symbol.withSymbolConfiguration(sized) ?? symbol
+            img.isTemplate = true // подстраивается под светлую/темную строку меню
+            return img
+        case .on, .foreign, .unknown:
+            let color: NSColor
+            switch status {
+            case .on: color = .systemGreen
+            case .foreign: color = .systemYellow
+            case .unknown: color = .systemRed
+            case .off: color = .labelColor
+            }
+            let config = sized.applying(.init(paletteColors: [color]))
+            guard let configured = symbol.withSymbolConfiguration(config) else {
+                return tinted(symbol, color: color)
+            }
+            let img = configured.copy() as? NSImage ?? configured
+            img.isTemplate = false
+            return img
+        }
+    }
+
+    private static func tinted(_ image: NSImage, color: NSColor) -> NSImage {
+        let img = image.copy() as? NSImage ?? image
+        img.isTemplate = false
+        let size = img.size
+        guard size.width > 0, size.height > 0 else { return img }
+        img.lockFocus()
+        color.set()
+        NSRect(origin: .zero, size: size).fill(using: .sourceAtop)
+        img.unlockFocus()
+        return img
     }
 }
 
@@ -188,12 +237,25 @@ struct PanelView: View {
                 fraction: model.sample.batteryPercent.map { CGFloat($0) / 100 },
                 fill: .battery(model.sample.batteryPercent ?? 100)
             )
-            if let reason = model.lastReason {
-                Text(reason)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.primary.opacity(0.75))
-                    .lineLimit(2)
-                    .padding(.top, 2)
+            if model.lastLidAwakeSeconds != nil || model.lastReason != nil {
+                VStack(alignment: .leading, spacing: 2) {
+                    if let lidAwake = model.lastLidAwakeSeconds {
+                        let prefix = model.lidAwakeLive
+                            ? "Под крышкой без сна"
+                            : "Прошлый раз под крышкой"
+                        Text("\(prefix): \(Fmt.duration(lidAwake))")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.primary.opacity(0.75))
+                            .lineLimit(2)
+                    }
+                    if let reason = model.lastReason {
+                        Text(reason)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.primary.opacity(0.75))
+                            .lineLimit(2)
+                    }
+                }
+                .padding(.top, 2)
             }
         }
         .padding(.horizontal, 14)

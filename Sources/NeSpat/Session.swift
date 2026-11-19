@@ -12,6 +12,13 @@ struct Session: Codable, Equatable {
     var lastReason: String?
     /// PID приложения, включившего сессию.
     var pid: Int32 = 0
+
+    /// Когда крышку закрыли при нашей сессии (идёт замер «под крышкой»).
+    var lidClosedAt: Date?
+    /// Последний тик «ещё не спал» при закрытой крышке.
+    var lidHeartbeatAt: Date?
+    /// Итог последнего замера: сколько секунд реально не спал под крышкой.
+    var lastLidAwakeSeconds: TimeInterval?
 }
 
 enum SessionStore {

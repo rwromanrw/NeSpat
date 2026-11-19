@@ -32,13 +32,19 @@ final class AppModel: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Если между тиками больше этого — считаем, что Mac успел поспать (тики не шли).
+    private static let sleepGap: TimeInterval = 90
+
     // UI-состояние
-    @Published var menuTitle = "…"
+    @Published var menuMetrics = "…"
     @Published var status: Status = .unknown
     @Published var sample = StatsSampler.Sample()
     @Published var duration: Duration = .none
     @Published var remaining: TimeInterval?
     @Published var lastReason: String?
+    @Published var lastLidAwakeSeconds: TimeInterval?
+    /// Сейчас идет замер под закрытой крышкой (живой счетчик).
+    @Published var lidAwakeLive = false
     @Published var busy = false
     @Published var launchAtLogin = false
 
@@ -54,6 +60,8 @@ final class AppModel: ObservableObject, @unchecked Sendable {
         session = SessionStore.load()
         adoptSessionOnLaunch()
         launchAtLogin = LoginItem.isEnabled
+        lastLidAwakeSeconds = session.lastLidAwakeSeconds
+        lastReason = session.lastReason
         tick()
         let timer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
             self?.tick()
@@ -95,11 +103,12 @@ final class AppModel: ObservableObject, @unchecked Sendable {
             status = session.owned ? .unknown : .off
         }
         lastReason = session.lastReason
+        lastLidAwakeSeconds = session.lastLidAwakeSeconds
 
         guard session.owned else {
             remaining = nil
             lastLid = lid
-            updateMenuTitle()
+            updateMenuMetrics()
             return
         }
 
@@ -108,7 +117,7 @@ final class AppModel: ObservableObject, @unchecked Sendable {
             remaining = until.timeIntervalSinceNow
             if until <= Date() {
                 autoOff("таймер закончился")
-                updateMenuTitle()
+                updateMenuMetrics()
                 return
             }
         } else {
@@ -118,24 +127,25 @@ final class AppModel: ObservableObject, @unchecked Sendable {
         // Автоотключения
         if let percent = sample.batteryPercent, sample.charging == false, percent < 15 {
             autoOff("заряд \(percent)%")
+            updateMenuMetrics()
+            return
         } else if ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue {
             autoOff("перегрев (thermal state)")
+            updateMenuMetrics()
+            return
         } else if let t = sample.temperatureC, t >= 95 {
             autoOff("температура \(Int(t))°")
+            updateMenuMetrics()
+            return
         }
 
-        // Крышка: погасить экран на переходе в «закрыта»
-        if state == .disabled, lid == true, lastLid == false {
-            SleepControl.displaysleepnow()
-        }
-        lastLid = lid
+        // Крышка: погасить экран + замер «сколько не спал под крышкой»
+        trackLid(closed: lid, sleepDisabled: state == .disabled)
 
-        updateMenuTitle()
+        updateMenuMetrics()
     }
 
-    private func updateMenuTitle() {
-        // Единый лаконичный формат фиксированной ширины:
-        // «☕ 52° 18% 69%» / «   52° 18% 69%» / «⚠ 52° 18% 69%»
+    private func updateMenuMetrics() {
         let temp = sample.temperatureC.map { String(format: "%2d°", Int($0.rounded())) } ?? " —"
         let cpu = sample.cpuPercent.map { String(format: "%2d%%", Int($0.rounded())) } ?? " —"
         let mem: String
@@ -145,14 +155,85 @@ final class AppModel: ObservableObject, @unchecked Sendable {
         } else {
             mem = " —"
         }
-        let icon: String
-        switch status {
-        case .on: icon = "☕"
-        case .unknown: icon = "⚠"
-        case .off, .foreign: icon = "·"
+        let title = "\(temp) \(cpu) \(mem)"
+        if title != menuMetrics { menuMetrics = title }
+    }
+
+    // MARK: Крышка
+
+    private func trackLid(closed: Bool?, sleepDisabled: Bool) {
+        guard let closed else {
+            lastLid = nil
+            return
         }
-        let title = "\(icon) \(temp) \(cpu) \(mem)"
-        if title != menuTitle { menuTitle = title }
+
+        if closed {
+            if lastLid == false || (lastLid == nil && session.lidClosedAt == nil) {
+                // Только что закрыли (или старт с уже закрытой крышкой).
+                beginLidAwake()
+                if sleepDisabled {
+                    SleepControl.displaysleepnow()
+                }
+            } else if session.lidClosedAt != nil {
+                pulseLidHeartbeat()
+            }
+        } else if lastLid == true || session.lidClosedAt != nil {
+            // Открыли крышку — фиксируем итог.
+            finalizeLidAwake()
+        }
+
+        lastLid = closed
+    }
+
+    private func beginLidAwake() {
+        // Новый цикл крышки: прошлый итог убираем только здесь, счетчик с нуля.
+        let now = Date()
+        session.lastLidAwakeSeconds = nil
+        lastLidAwakeSeconds = nil
+        lidAwakeLive = true
+        session.lidClosedAt = now
+        session.lidHeartbeatAt = now
+        SessionStore.save(session)
+    }
+
+    private func pulseLidHeartbeat() {
+        let now = Date()
+        if let hb = session.lidHeartbeatAt, now.timeIntervalSince(hb) > Self.sleepGap {
+            // Тики долго не шли — Mac, скорее всего, спал. Режем замер по последнему «жив».
+            finalizeLidAwake()
+            return
+        }
+        session.lidHeartbeatAt = now
+        lidAwakeLive = true
+        // Живой счетчик, пока крышка закрыта (если панель все же открыта).
+        if let start = session.lidClosedAt {
+            let seconds = max(0, now.timeIntervalSince(start))
+            if seconds >= 5 {
+                lastLidAwakeSeconds = seconds
+            }
+        }
+        SessionStore.save(session)
+    }
+
+    private func finalizeLidAwake() {
+        guard let start = session.lidClosedAt else { return }
+        let end = session.lidHeartbeatAt ?? start
+        let seconds = max(0, end.timeIntervalSince(start))
+        // Короткие ложные срабатывания (< 5 с) не показываем.
+        if seconds >= 5 {
+            session.lastLidAwakeSeconds = seconds
+            lastLidAwakeSeconds = seconds
+        } else if !lidAwakeLive {
+            // не трогаем уже сохраненный «прошлый раз»
+        } else {
+            // Был короткий ложный цикл — прошлый итог уже сбросили в begin; оставляем пусто.
+            session.lastLidAwakeSeconds = nil
+            lastLidAwakeSeconds = nil
+        }
+        session.lidClosedAt = nil
+        session.lidHeartbeatAt = nil
+        lidAwakeLive = false
+        SessionStore.save(session)
     }
 
     // MARK: Действия пользователя
@@ -169,8 +250,13 @@ final class AppModel: ObservableObject, @unchecked Sendable {
                 session.pid = getpid()
                 session.until = duration.seconds.map { Date().addingTimeInterval($0) }
                 session.lastReason = nil
+                // «Прошлый раз под крышкой» не трогаем — сброс только при следующем закрытии крышки.
                 SessionStore.save(session)
-                if PowerInfo.lidClosed() == true { SleepControl.displaysleepnow() }
+                if PowerInfo.lidClosed() == true {
+                    beginLidAwake()
+                    SleepControl.displaysleepnow()
+                    lastLid = true
+                }
             case .notConfirmed, .canceled:
                 session.owned = false
                 SessionStore.save(session)
@@ -247,6 +333,7 @@ final class AppModel: ObservableObject, @unchecked Sendable {
             session.owned = false
             session.until = nil
             session.lastReason = disk.lastReason
+            session.lastLidAwakeSeconds = disk.lastLidAwakeSeconds
             return
         }
         session = disk
@@ -260,10 +347,16 @@ final class AppModel: ObservableObject, @unchecked Sendable {
     }
 
     private func endSession(reason: String?) {
+        // Если крышка была закрыта — фиксируем итог. Надпись «прошлый раз» не стираем:
+        // она живет до следующего закрытия крышки (даже после таймера / выключения режима).
+        finalizeLidAwake()
         session.owned = false
         session.until = nil
         if let reason { session.lastReason = reason }
         SessionStore.save(session)
         remaining = nil
+        lastReason = session.lastReason
+        lastLidAwakeSeconds = session.lastLidAwakeSeconds
+        lidAwakeLive = false
     }
 }
