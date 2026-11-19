@@ -14,10 +14,10 @@
 
 ## Быстрый старт
 
-Готовый установщик: **[скачать NeSpat-1.0.dmg](https://github.com/rwromanrw/NeSpat/releases/download/v1.0/NeSpat-1.0.dmg)**  
-Страница релиза: https://github.com/rwromanrw/NeSpat/releases/v1.0
+Готовый установщик: **[скачать NeSpat-1.1.dmg](https://github.com/rwromanrw/NeSpat/releases/download/v1.1/NeSpat-1.1.dmg)**  
+Страница релиза: https://github.com/rwromanrw/NeSpat/releases/v1.1
 
-1. Скачайте `NeSpat-1.0.dmg`, откройте и перетащите `NeSpat.app` в папку Applications.
+1. Скачайте `NeSpat-1.1.dmg`, откройте и перетащите `NeSpat.app` в папку Applications.
 2. В Finder → Программы найдите «Не спать».
 3. **Первый запуск.** Приложение не из App Store и без нотаризации Apple — это нормально для открытого проекта. Правый клик по «Не спать» → **Открыть** → в диалоге снова **Открыть**. Обычный двойной клик macOS может блокировать.
 4. В строке меню появятся цифры. Готово.
@@ -95,7 +95,7 @@ LaunchAgent, который раз в 30 с проверяет: если реж�
 ## Передача другому Mac
 
 ```bash
-./scripts/package-dmg.sh   # → build/NeSpat-1.0.dmg
+./scripts/package-dmg.sh   # → build/NeSpat-1.1.dmg
 ```
 
 На другом Mac: открыть DMG → Applications → при первом запуске «Открыть» через правый клик (подпись ad-hoc). Сторож ставится отдельно из исходников, если нужен.
