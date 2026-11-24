@@ -1,10 +1,10 @@
 #!/bin/bash
-# Собирает DMG для передачи другим: NeSpat-1.1.dmg
+# Собирает DMG для передачи другим: NeSpat-1.2.dmg
 # Использование: ./scripts/package-dmg.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION="1.1"
+VERSION="1.2"
 APP_NAME="NeSpat"
 DMG_NAME="${APP_NAME}-${VERSION}.dmg"
 STAGING="build/dmg-staging"

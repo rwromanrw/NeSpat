@@ -83,6 +83,20 @@ final class AppModel: ObservableObject, @unchecked Sendable {
         remaining = session.until?.timeIntervalSinceNow
     }
 
+    /// Можно показать «Еще +1 ч»: наша сессия с таймером (не «без лимита»).
+    var canExtendOneHour: Bool {
+        status == .on && session.owned && session.until != nil
+    }
+
+    /// Продлить дедлайн на час без смены системного флага сна (пароль не нужен).
+    func extendOneHour() {
+        guard session.owned, let until = session.until else { return }
+        let base = max(until, Date())
+        session.until = base.addingTimeInterval(3600)
+        SessionStore.save(session)
+        remaining = session.until?.timeIntervalSinceNow
+    }
+
     // MARK: Тик
 
     func tick() {

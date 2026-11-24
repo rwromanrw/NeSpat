@@ -188,9 +188,17 @@ struct PanelView: View {
 
     private var durationBlock: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Длительность")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline) {
+                Text("Длительность")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                if model.canExtendOneHour {
+                    Button("Еще +1 ч") { model.extendOneHour() }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 11))
+                }
+            }
             Picker("", selection: Binding(
                 get: { model.duration },
                 set: { model.setDuration($0) }
