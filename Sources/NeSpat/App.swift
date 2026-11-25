@@ -130,11 +130,12 @@ struct PanelView: View {
                 Text("Не спать")
                     .font(.system(size: 13, weight: .semibold))
                 Spacer(minLength: 8)
-                Toggle("", isOn: isOnBinding)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    .disabled(model.busy)
+                if model.canTurnOff {
+                    Button("Выключить") { model.toggle(false) }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 13))
+                        .disabled(model.busy)
+                }
             }
             Text(statusText)
                 .font(.system(size: 11))
@@ -145,17 +146,11 @@ struct PanelView: View {
                     .buttonStyle(.borderless)
                     .font(.system(size: 11))
                     .padding(.top, 2)
+                    .disabled(model.busy)
             }
         }
         .padding(.horizontal, 14)
         .padding(.top, 4)
-    }
-
-    private var isOnBinding: Binding<Bool> {
-        Binding(
-            get: { model.status == .on },
-            set: { model.toggle($0) }
-        )
     }
 
     private var statusText: String {
@@ -199,17 +194,25 @@ struct PanelView: View {
                         .font(.system(size: 11))
                 }
             }
-            Picker("", selection: Binding(
-                get: { model.duration },
-                set: { model.setDuration($0) }
-            )) {
+            // Кнопки, не Picker: повторный клик по тому же сроку тоже включает/перезапускает.
+            HStack(spacing: 4) {
                 ForEach(model.durations) { d in
-                    Text(d.rawValue).tag(d)
+                    Button {
+                        model.setDuration(d)
+                    } label: {
+                        Text(d.rawValue)
+                            .font(.system(size: 11, weight: model.duration == d ? .semibold : .regular))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(model.duration == d ? Color.primary.opacity(0.14) : Color.primary.opacity(0.06))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(model.busy)
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.small)
         }
         .padding(.horizontal, 14)
     }

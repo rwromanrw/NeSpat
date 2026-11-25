@@ -74,18 +74,27 @@ final class AppModel: ObservableObject, @unchecked Sendable {
         testTimerAvailable ? Duration.allCases : Duration.allCases.filter { $0 != .test }
     }
 
-    /// Смена длительности во время активной сессии пересчитывает дедлайн.
+    /// Выбор срока: если режим выключен — включает «Не спать»; если включен — только двигает дедлайн.
     func setDuration(_ d: Duration) {
         duration = d
-        guard session.owned else { return }
-        session.until = d.seconds.map { Date().addingTimeInterval($0) }
-        SessionStore.save(session)
-        remaining = session.until?.timeIntervalSinceNow
+        if status == .on, session.owned {
+            session.until = d.seconds.map { Date().addingTimeInterval($0) }
+            SessionStore.save(session)
+            remaining = session.until?.timeIntervalSinceNow
+            return
+        }
+        // Сегмент вместо тумблера: нажал срок — запустился режим.
+        toggle(true)
+    }
+
+    /// Режим наш и включен — можно показать «Выключить».
+    var canTurnOff: Bool {
+        status == .on && session.owned
     }
 
     /// Можно показать «Еще +1 ч»: наша сессия с таймером (не «без лимита»).
     var canExtendOneHour: Bool {
-        status == .on && session.owned && session.until != nil
+        canTurnOff && session.until != nil
     }
 
     /// Продлить дедлайн на час без смены системного флага сна (пароль не нужен).
